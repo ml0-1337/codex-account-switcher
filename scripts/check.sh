@@ -15,6 +15,7 @@ for script_path in "$script_directory"/*.sh; do
 done
 
 "$script_directory/check-distribution.sh"
+"$script_directory/check-release.sh"
 
 echo "Checks passed"
 exit 0

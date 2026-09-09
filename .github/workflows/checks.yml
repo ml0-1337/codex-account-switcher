@@ -1,0 +1,117 @@
+name: Checks and releases
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_ANALYTICS: "1"
+
+jobs:
+  check:
+    name: Check ${{ matrix.architecture }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            architecture: arm64
+          - runner: macos-15-intel
+            architecture: x86_64
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Prepare build tools
+        run: |
+          test "$(uname -m)" = "$EXPECTED_ARCHITECTURE"
+          swift --version
+          if ! command -v rg >/dev/null; then
+            brew install ripgrep
+          fi
+      - name: Run all local checks
+        run: ./scripts/check.sh
+      - name: Build and verify the release archive
+        run: |
+          version=0.0.0
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          ./scripts/build.sh
+          test "$(xcrun lipo -archs dist/codex-switch)" = "$EXPECTED_ARCHITECTURE"
+          ./scripts/release.sh package "$version" dist/codex-switch dist/archives
+          mkdir dist/unpacked
+          tar -xzf "dist/archives/codex-switch-$version-macos-$EXPECTED_ARCHITECTURE.tar.gz" -C dist/unpacked
+          codesign --verify --strict dist/unpacked/codex-switch
+          cmp dist/codex-switch dist/unpacked/codex-switch
+          dist/unpacked/codex-switch help
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: macos-${{ matrix.architecture }}
+          path: dist/archives/*.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+
+  draft-release:
+    name: Prepare draft release
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: macos-*
+          path: dist
+          merge-multiple: true
+      - name: Generate Homebrew formula and checksums
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          ./scripts/release.sh formula "$version" "$GITHUB_REPOSITORY" dist > dist/codex-switch.rb
+          ruby -c dist/codex-switch.rb
+          cd dist
+          shasum -a 256 ./*.tar.gz > SHA256SUMS
+          shasum -a 256 --check SHA256SUMS
+      - name: Create draft for manual acceptance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cat > dist/release-notes.md <<'NOTES'
+          macOS 14+ 向けの非公式 CLI。Apple Silicon と Intel のバイナリを含みます。
+          バイナリは ad-hoc 署名済みで、Developer ID 署名・Apple の公証はありません。
+
+          CI は合成データでのテスト、署名、アーカイブから取り出した CLI の help を確認します。
+          実アカウントでのログイン、Keychain の再許可、公式アプリへの反映は未確認です。
+          公開前に docs/manual-acceptance.md の結果と macOS 14 での動作を記録してください。
+          Homebrew 用の codex-switch.rb は、このリリースを公開した後に tap へ反映します。
+          NOTES
+          gh release create "$GITHUB_REF_NAME" \
+            dist/*.tar.gz dist/SHA256SUMS dist/codex-switch.rb \
+            --verify-tag --draft --title "$GITHUB_REF_NAME" \
+            --notes-file dist/release-notes.md --generate-notes

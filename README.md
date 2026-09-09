@@ -8,17 +8,59 @@
 
 `codex-switch` でアカウントを選択し、切り替え後は公式アプリを手動で再起動する。
 GUI、公式アプリのコピー、公式アプリに含まれる
-Codex、画像などのアセットは配布物に含めない。ソースからビルドし、ビルドした実行
-ファイルだけを利用する。
+Codex、画像などのアセットは配布物に含めない。配布するのは、このプロジェクトから
+ビルドした CLI とライセンスだけである。
 
-対象 OS は macOS 14 以降である。ビルドには Swift 6 と Git が必要で、公開前検査には
-PCRE2 対応の `rg` も必要になる。
+対象 OS は macOS 14 以降である。Apple Silicon と Intel 用の配布ファイルを作る。
+ビルド済みの CLI の利用に Swift の開発環境は必要ない。ソースからビルドする場合は
+Swift 6 と Git、開発時の検査には PCRE2 対応の `rg` と Ruby も必要になる。
 通常の切り替えはローカルの共有ファイルと Keychain の既存レコードを
 更新して確認するが、Codex の起動、ネットワーク通信、公式アプリの終了・再起動は
 行わない。このため、公式アプリがインストールされていない環境でも通常の切り替えは
 実行できる。
 
-## まず使う
+## インストール
+
+### Homebrew
+
+[GitHub Releases](https://github.com/ml0-1337/codex-account-switcher/releases) に
+リリースが公開され、[tap](https://github.com/ml0-1337/homebrew-tap) に反映された後は、
+Homebrew でインストール・更新できる。Homebrew は CPU に合ったビルド済みバイナリを取得する。
+
+```sh
+brew install ml0-1337/tap/codex-switch
+codex-switch help
+
+# 更新
+brew upgrade ml0-1337/tap/codex-switch
+
+# CLI の削除
+brew uninstall ml0-1337/tap/codex-switch
+```
+
+削除後も認証情報、プロファイル、設定、履歴、Keychain 項目は残る。
+以前に手動配置した同名の CLI がある場合は `command -v codex-switch` で実行先を確認する。
+手動配置したファイルと Homebrew 管理のファイルを上書きし合わないようにする。
+
+### GitHub Releases から取得する場合
+
+Releases から `codex-switch-VERSION-macos-arm64.tar.gz` または
+`codex-switch-VERSION-macos-x86_64.tar.gz` と、同じリリースの `SHA256SUMS` を取得する。
+`uname -m` が `arm64` なら Apple Silicon、`x86_64` なら Intel 用を選ぶ。
+`shasum -a 256` でアーカイブのハッシュを計算し、`SHA256SUMS` の対応する値と照合する。
+一致したファイルを空のディレクトリへ展開し、そのディレクトリで次を実行する。
+
+```sh
+codesign --verify --strict ./codex-switch
+./codex-switch help
+```
+
+配布バイナリは ad-hoc 署名済みで、Developer ID 署名・Apple の公証はない。
+利用者も公開者も、この方式のために Apple Developer Program へ加入する必要はない。
+ダウンロード経路や macOS の設定によって実行時に警告・ブロックが出る場合がある。
+Gatekeeper や Keychain のアクセス制御を無効にする手順は使わない。
+
+### ソースからビルドする場合
 
 リポジトリのルートで、次の順に実行する。
 
@@ -200,15 +242,18 @@ UUID、ラベルは `Codex Account Switcher — email` である。
 ```
 
 公開スキャンと検出器の合成値テストだけを Swift のビルドなしで確認する場合は、
-`./scripts/check-distribution.sh` を直接実行できる。
+`./scripts/check-distribution.sh` を直接実行できる。配布アーカイブと Homebrew 定義の
+検査だけを行う場合は `./scripts/check-release.sh` を使う。
 
 `check.sh` は Swift のテスト、Release CLI ビルド、すべての配布スクリプトの
-`bash -n` の後、独立して実行できる `scripts/check-distribution.sh` を呼び出す。
-後者は公開対象の秘密情報・個人パス・非テキストファイルのヒューリスティック検査、
+`bash -n` の後、`scripts/check-distribution.sh` と `scripts/check-release.sh` を呼び出す。
+前者は公開対象の秘密情報・個人パス・非テキストファイルのヒューリスティック検査、
 隔離した一時ディレクトリでの検出器ごとの合成値テストを実行する。
 `.git` と、Git 管理下にない `.build`・
 `dist` の生成物は公開対象から除外するが、Git 管理下の同じ場所にあるバイナリは検査で
-拒否する。追跡中かどうかにかかわらず、公開予定の新しいファイルは検査する。検査中に
+拒否する。後者は一時ディレクトリで作った合成の Mach-O 実行ファイルを使い、両 CPU の
+アーカイブ内容、署名の保持、既存成果物の保護、Homebrew 定義の URL とハッシュを確認する。
+追跡中かどうかにかかわらず、公開予定の新しいファイルは検査する。検査中に
 ネットワーク、実アカウント、実 Keychain、公式アプリ、通常の `HOME` は使わない。
 
 スキャンはよくある秘密情報の形を検出するための補助的な検査であり、公開前に人が内容を
@@ -218,8 +263,10 @@ UUID、ラベルは `Codex Account Switcher — email` である。
 ad-hoc 署名後の Keychain 再許可、ブラウザー認証、アプリ内ターミナルでの切り替えと
 手動再起動は、ローカルの `check.sh` が成功しても未確認のままである。
 
-配布物はソースと、ビルドして検証した単一の CLI 実行ファイルだけとする。公開手順の
-詳細は [配布スクリプトの仕様](docs/distribution.md) を参照する。
+GitHub Actions は Apple Silicon と Intel 上で検査し、配布アーカイブから取り出した
+CLI の `help` まで確認する。`vMAJOR.MINOR.PATCH` タグを push すると、両 CPU のアーカイブ、
+`SHA256SUMS`、Homebrew 定義を添付したドラフトリリースを作る。リリースの公開と tap の
+更新は、配布物の確認後に行う。手順は [配布スクリプトの仕様](docs/distribution.md) を参照する。
 
 ## ライセンス
 
