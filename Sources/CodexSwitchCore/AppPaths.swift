@@ -74,9 +74,8 @@ public struct AppPaths: Sendable, Equatable {
         try Self.ensureDirectoryHierarchy(stateRoot, label: "切替ツールの状態ディレクトリ")
     }
 
-    /// Ensures one private directory. This remains internal-but-visible to the
-    /// core package so the temporary-home owner can use exactly the same path
-    /// checks without duplicating policy.
+    /// Ensures one private directory using the same path checks as state
+    /// persistence and temporary-home creation.
     public static func ensurePrivateDirectory(
         _ url: URL,
         label: String,
@@ -122,7 +121,7 @@ public struct AppPaths: Sendable, Equatable {
         // Create one component at a time after an lstat check. FileManager's
         // intermediate-directory convenience follows an existing symlink and
         // could otherwise create a child below an attacker-replaced path.
-        let resolved = resolveSupportedSystemAlias(normalized.path)
+        let resolved = SecurePath.resolveSupportedSystemAlias(normalized.path)
         var current = URL(fileURLWithPath: "/", isDirectory: true)
         for component in resolved.split(separator: "/") {
             current.appendPathComponent(String(component), isDirectory: true)
@@ -149,25 +148,12 @@ public struct AppPaths: Sendable, Equatable {
         try validatePrivateDirectory(normalized, label: label, applyPermissions: false)
     }
 
-    private static func resolveSupportedSystemAlias(_ path: String) -> String {
-        if path == "/var" { return "/private/var" }
-        if path.hasPrefix("/var/") { return "/private" + path }
-        if path == "/tmp" { return "/private/tmp" }
-        if path.hasPrefix("/tmp/") { return "/private/tmp/" + path.dropFirst(5) }
-        return path
-    }
-
     private static func validatePrivateDirectory(
         _ url: URL,
         label: String,
         applyPermissions: Bool
     ) throws {
-        let descriptor: Int32
-        do {
-            descriptor = try SecurePath.openDirectory(url)
-        } catch {
-            throw error
-        }
+        let descriptor = try SecurePath.openDirectory(url)
         defer { _ = Darwin.close(descriptor) }
 
         var information = stat()

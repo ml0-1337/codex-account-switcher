@@ -3,6 +3,80 @@ import XCTest
 @testable import CodexSwitchCore
 
 final class StateStoreTests: XCTestCase {
+    func testUnrepresentableJournalTimestampIsRejectedWithoutChangingItsBytes() throws {
+        let fixture = try Fixture()
+        let store = JournalStore(paths: fixture.paths)
+        try store.save(SwitchJournal(
+            operationID: UUID(),
+            sourceProfileID: UUID(),
+            targetProfileID: UUID(),
+            sourceAccountID: "source-fixture",
+            targetAccountID: "target-fixture",
+            sourceAuthHash: String(repeating: "a", count: 64),
+            targetAuthHash: String(repeating: "b", count: 64)
+        ))
+        let original = try AtomicFileWriter.readSecureFile(fixture.paths.journalFile, maximumSize: 65_536)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
+        object["createdAt"] = Int64.max
+        let invalid = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        try AtomicFileWriter.write(invalid, to: fixture.paths.journalFile)
+
+        XCTAssertThrowsError(try store.load())
+        XCTAssertEqual(
+            try AtomicFileWriter.readSecureFile(fixture.paths.journalFile, maximumSize: 65_536),
+            invalid
+        )
+    }
+
+    func testMissingStateDirectoryIsReadWithoutCreatingFiles() throws {
+        let fixture = try Fixture()
+        try FileManager.default.removeItem(at: fixture.paths.stateRoot)
+
+        XCTAssertEqual(
+            try StateStore(paths: fixture.paths).loadOrCreate(),
+            SwitcherState(sharedCodexHome: fixture.paths.codexHome.path)
+        )
+        XCTAssertNil(try JournalStore(paths: fixture.paths).load())
+        XCTAssertNil(try RegistrationStore(paths: fixture.paths).load())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.paths.stateRoot.path))
+    }
+
+    func testDanglingStateAndJournalSymlinksAreRejected() throws {
+        let fixture = try Fixture()
+        let missing = fixture.root.appendingPathComponent("missing")
+        let files = [
+            fixture.paths.stateFile,
+            fixture.paths.journalFile,
+            fixture.paths.registrationJournalFile,
+        ]
+        for file in files {
+            try FileManager.default.createSymbolicLink(at: file, withDestinationURL: missing)
+        }
+
+        XCTAssertThrowsError(try StateStore(paths: fixture.paths).loadOrCreate())
+        XCTAssertThrowsError(try JournalStore(paths: fixture.paths).load())
+        XCTAssertThrowsError(try RegistrationStore(paths: fixture.paths).load())
+        for file in files {
+            XCTAssertEqual(
+                try FileManager.default.destinationOfSymbolicLink(atPath: file.path),
+                missing.path
+            )
+        }
+    }
+
+    func testDanglingStateDirectorySymlinkIsRejected() throws {
+        let fixture = try Fixture()
+        try FileManager.default.removeItem(at: fixture.paths.stateRoot)
+        try FileManager.default.createSymbolicLink(
+            at: fixture.paths.stateRoot,
+            withDestinationURL: fixture.root.appendingPathComponent("missing")
+        )
+
+        XCTAssertThrowsError(try StateStore(paths: fixture.paths).loadOrCreate())
+        XCTAssertThrowsError(try JournalStore(paths: fixture.paths).load())
+        XCTAssertThrowsError(try RegistrationStore(paths: fixture.paths).load())
+    }
+
     func testStateV1IsRejectedWithoutChangingItsBytes() throws {
         let fixture = try Fixture()
         let profile = try AccountProfile(

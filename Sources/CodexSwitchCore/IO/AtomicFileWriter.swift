@@ -30,8 +30,7 @@ public enum AtomicFileWriter {
             defer { _ = Darwin.close(existingDescriptor) }
             try validateRegularDescriptor(
                 existingDescriptor,
-                requiredMode: nil,
-                requireSingleLink: true
+                requiredMode: nil
             )
         } else if requireExistingRegularFile {
             throw CodexSwitchError.unsafeFile("更新対象のファイルがありません。")
@@ -117,8 +116,7 @@ public enum AtomicFileWriter {
 
         try validateRegularDescriptor(
             descriptor,
-            requiredMode: requiredMode,
-            requireSingleLink: true
+            requiredMode: requiredMode
         )
     }
 
@@ -126,6 +124,16 @@ public enum AtomicFileWriter {
         _ url: URL,
         maximumSize: Int
     ) throws -> Data {
+        guard let data = try readSecureFileIfPresent(url, maximumSize: maximumSize) else {
+            throw CodexSwitchError.unsafeFile("対象ファイルを確認できません。")
+        }
+        return data
+    }
+
+    static func readSecureFileIfPresent(
+        _ url: URL,
+        maximumSize: Int
+    ) throws -> Data? {
         try requireSameRealAndEffectiveUser()
         guard maximumSize > 0 else {
             throw CodexSwitchError.invalidInput("読み取りサイズの上限が不正です。")
@@ -136,21 +144,22 @@ public enum AtomicFileWriter {
         let fileName = normalizedURL.lastPathComponent
         try validateComponent(fileName)
 
-        let directoryDescriptor = try openSecureDirectory(parent)
+        guard let directoryDescriptor = try openSecureDirectoryIfPresent(parent) else {
+            return nil
+        }
         defer { _ = Darwin.close(directoryDescriptor) }
 
         guard let descriptor = try openExistingFile(
             directoryDescriptor: directoryDescriptor,
             fileName: fileName
         ) else {
-            throw CodexSwitchError.unsafeFile("対象ファイルを確認できません。")
+            return nil
         }
         defer { _ = Darwin.close(descriptor) }
 
         let initialInformation = try validateRegularDescriptor(
             descriptor,
-            requiredMode: ownerOnlyMode,
-            requireSingleLink: true
+            requiredMode: ownerOnlyMode
         )
         guard initialInformation.st_size >= 0,
               initialInformation.st_size <= off_t(maximumSize)
@@ -217,8 +226,7 @@ public enum AtomicFileWriter {
 
         try validateRegularDescriptor(
             descriptor,
-            requiredMode: nil,
-            requireSingleLink: true
+            requiredMode: nil
         )
         guard Darwin.unlinkat(directoryDescriptor, fileName, 0) == 0 else {
             if errno == ENOENT { return }
@@ -227,7 +235,14 @@ public enum AtomicFileWriter {
     }
 
     private static func openSecureDirectory(_ url: URL) throws -> Int32 {
-        let descriptor = try SecurePath.openDirectory(url)
+        guard let descriptor = try openSecureDirectoryIfPresent(url) else {
+            throw CodexSwitchError.unsafeFile("保存先ディレクトリを確認できません。")
+        }
+        return descriptor
+    }
+
+    private static func openSecureDirectoryIfPresent(_ url: URL) throws -> Int32? {
+        guard let descriptor = try SecurePath.openDirectoryIfPresent(url) else { return nil }
 
         do {
             var information = stat()
@@ -253,7 +268,7 @@ public enum AtomicFileWriter {
             Darwin.openat(
                 directoryDescriptor,
                 pointer,
-                O_RDONLY | O_CLOEXEC | O_NOFOLLOW
+                O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK
             )
         }
         if descriptor >= 0 { return descriptor }
@@ -267,8 +282,7 @@ public enum AtomicFileWriter {
     @discardableResult
     private static func validateRegularDescriptor(
         _ descriptor: Int32,
-        requiredMode: mode_t?,
-        requireSingleLink: Bool
+        requiredMode: mode_t?
     ) throws -> stat {
         var information = stat()
         guard Darwin.fstat(descriptor, &information) == 0 else {
@@ -283,10 +297,8 @@ public enum AtomicFileWriter {
         guard information.st_mode & mode_t(0o077) == 0 else {
             throw CodexSwitchError.unsafeFile("対象ファイルの権限が安全な設定ではありません。")
         }
-        if requireSingleLink {
-            guard information.st_nlink == 1 else {
-                throw CodexSwitchError.unsafeFile("対象ファイルに複数のハードリンクがあります。")
-            }
+        guard information.st_nlink == 1 else {
+            throw CodexSwitchError.unsafeFile("対象ファイルに複数のハードリンクがあります。")
         }
         if let requiredMode {
             guard information.st_mode & mode_t(0o777) == requiredMode else {

@@ -119,20 +119,9 @@ public struct AccountReadResult: Decodable, Sendable, Equatable {
     public let account: AccountInfo?
     public let requiresOpenaiAuth: Bool
 
-    enum CodingKeys: String, CodingKey {
-        case account
-        case requiresOpenaiAuth
-    }
-
     public init(account: AccountInfo?, requiresOpenaiAuth: Bool) {
         self.account = account
         self.requiresOpenaiAuth = requiresOpenaiAuth
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        account = try container.decodeIfPresent(AccountInfo.self, forKey: .account)
-        requiresOpenaiAuth = try container.decode(Bool.self, forKey: .requiresOpenaiAuth)
     }
 }
 
@@ -168,14 +157,6 @@ public struct DeviceCodeLoginResult: Decodable, Sendable, Equatable {
         self.loginID = loginID
         self.verificationURL = verificationURL
         self.userCode = userCode
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        type = try container.decode(String.self, forKey: .type)
-        loginID = try container.decode(String.self, forKey: .loginID)
-        verificationURL = try container.decode(String.self, forKey: .verificationURL)
-        userCode = try container.decode(String.self, forKey: .userCode)
     }
 }
 

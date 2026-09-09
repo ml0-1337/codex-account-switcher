@@ -136,8 +136,7 @@ public final class TemporaryCodexHome: @unchecked Sendable {
               UUID(uuidString: standardized.lastPathComponent) != nil,
               standardized.lastPathComponent.count == 36
         else {
-            cleanupFailureReason = "削除対象のパスを確認できません。"
-            throw CodexSwitchError.unsafeFile(cleanupFailureReason!)
+            throw cleanupFailure(.unsafeFile("削除対象のパスを確認できません。"))
         }
 
         let targetWasRenamed = removalURL != nil
@@ -146,22 +145,20 @@ public final class TemporaryCodexHome: @unchecked Sendable {
         do {
             identity = try cleanupOperations.inspect(target)
         } catch {
-            cleanupFailureReason = "一時CODEX_HOMEの削除対象を確認できません。"
-            throw CodexSwitchError.unsafeFile(cleanupFailureReason!)
+            throw cleanupFailure(.unsafeFile("一時CODEX_HOMEの削除対象を確認できません。"))
         }
         guard let identity else {
             if !targetWasRenamed {
                 cleanedUp = true
                 return
             }
-            cleanupFailureReason = "保存した一時CODEX_HOMEの削除対象を確認できません。"
-            throw CodexSwitchError.unsafeFile(cleanupFailureReason!)
+            throw cleanupFailure(.unsafeFile("保存した一時CODEX_HOMEの削除対象を確認できません。"))
         }
         guard identityMatches(identity) else {
-            cleanupFailureReason = targetWasRenamed
+            throw cleanupFailure(.unsafeFile(targetWasRenamed
                 ? "保存した一時CODEX_HOMEが作成時と一致しません。"
                 : "一時CODEX_HOMEが作成時と一致しません。"
-            throw CodexSwitchError.unsafeFile(cleanupFailureReason!)
+            ))
         }
 
         if !targetWasRenamed {
@@ -172,8 +169,7 @@ public final class TemporaryCodexHome: @unchecked Sendable {
             do {
                 try cleanupOperations.rename(standardized, tombstone)
             } catch {
-                cleanupFailureReason = "一時CODEX_HOMEを安全に削除準備できません。"
-                throw CodexSwitchError.io(cleanupFailureReason!)
+                throw cleanupFailure(.io("一時CODEX_HOMEを安全に削除準備できません。"))
             }
             // The original inode is not enough: inspect the renamed path before
             // allowing recursive removal. A replacement at the tombstone path
@@ -184,12 +180,10 @@ public final class TemporaryCodexHome: @unchecked Sendable {
             do {
                 movedIdentity = try cleanupOperations.inspect(tombstone)
             } catch {
-                cleanupFailureReason = "移動後の一時CODEX_HOMEを確認できません。"
-                throw CodexSwitchError.unsafeFile(cleanupFailureReason!)
+                throw cleanupFailure(.unsafeFile("移動後の一時CODEX_HOMEを確認できません。"))
             }
             guard let movedIdentity, identityMatches(movedIdentity) else {
-                cleanupFailureReason = "移動後の一時CODEX_HOMEが作成時と一致しません。"
-                throw CodexSwitchError.unsafeFile(cleanupFailureReason!)
+                throw cleanupFailure(.unsafeFile("移動後の一時CODEX_HOMEが作成時と一致しません。"))
             }
         }
 
@@ -199,12 +193,16 @@ public final class TemporaryCodexHome: @unchecked Sendable {
             // Keep removalURL so the next cleanup starts from the existing
             // tombstone. It must not attempt to rename the now-missing original
             // path again.
-            cleanupFailureReason = "一時CODEX_HOMEを削除できません。"
-            throw CodexSwitchError.io(cleanupFailureReason!)
+            throw cleanupFailure(.io("一時CODEX_HOMEを削除できません。"))
         }
         removalURL = nil
         cleanupFailureReason = nil
         cleanedUp = true
+    }
+
+    private func cleanupFailure(_ error: CodexSwitchError) -> CodexSwitchError {
+        cleanupFailureReason = error.localizedDescription
+        return error
     }
 
     private func identityMatches(_ identity: TemporaryHomeIdentity) -> Bool {

@@ -49,6 +49,35 @@ final class AtomicFileWriterTests: XCTestCase {
         XCTAssertThrowsError(try AtomicFileWriter.readSecureFile(file, maximumSize: 100))
     }
 
+    func testSecureReadRejectsFIFOWithoutWaitingForAWriter() throws {
+        let fifo = temporaryDirectory.appendingPathComponent("auth.json")
+        XCTAssertEqual(Darwin.mkfifo(fifo.path, mode_t(0o600)), 0)
+        let finished = DispatchSemaphore(value: 0)
+
+        DispatchQueue.global().async {
+            defer { finished.signal() }
+            do {
+                _ = try AtomicFileWriter.readSecureFile(fifo, maximumSize: 100)
+                XCTFail("A FIFO must not be accepted as an auth file")
+            } catch CodexSwitchError.unsafeFile {
+                // The file type must be rejected before reading its contents.
+            } catch {
+                XCTFail("Expected rejection of a non-regular file")
+            }
+        }
+
+        let result = finished.wait(timeout: .now() + 1)
+        if result == .timedOut {
+            // Release a blocking reader before the fixture is removed, so a
+            // regression fails the test without leaving a worker behind.
+            let writer = Darwin.open(fifo.path, O_RDWR | O_NONBLOCK | O_CLOEXEC)
+            defer { if writer >= 0 { _ = Darwin.close(writer) } }
+            XCTAssertGreaterThanOrEqual(writer, 0)
+            XCTAssertEqual(finished.wait(timeout: .now() + 1), .success)
+        }
+        XCTAssertEqual(result, .success, "A non-regular auth file must be rejected without blocking")
+    }
+
     func testRejectsHardLinkedExistingFile() throws {
         let original = temporaryDirectory.appendingPathComponent("original.json")
         let destination = temporaryDirectory.appendingPathComponent("state.json")

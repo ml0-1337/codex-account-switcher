@@ -3,6 +3,13 @@ import Foundation
 
 enum SecurePath {
     static func openDirectory(_ url: URL) throws -> Int32 {
+        guard let descriptor = try openDirectoryIfPresent(url) else {
+            throw CodexSwitchError.unsafeFile("ディレクトリ経路を確認できません。")
+        }
+        return descriptor
+    }
+
+    static func openDirectoryIfPresent(_ url: URL) throws -> Int32? {
         let standardized = url.standardizedFileURL
         guard standardized.isFileURL, standardized.path.hasPrefix("/") else {
             throw CodexSwitchError.unsafeFile("ディレクトリの絶対パスを確認できません。")
@@ -32,6 +39,10 @@ enum SecurePath {
                     )
                 }
                 guard nextDescriptor >= 0 else {
+                    if errno == ENOENT {
+                        _ = Darwin.close(descriptor)
+                        return nil
+                    }
                     throw CodexSwitchError.unsafeFile(
                         "ディレクトリ経路にシンボリックリンクまたは安全でない要素があります。"
                     )
@@ -66,7 +77,7 @@ enum SecurePath {
         }
     }
 
-    private static func resolveSupportedSystemAlias(_ path: String) -> String {
+    static func resolveSupportedSystemAlias(_ path: String) -> String {
         if path == "/var" { return "/private/var" }
         if path.hasPrefix("/var/") {
             return "/private" + path

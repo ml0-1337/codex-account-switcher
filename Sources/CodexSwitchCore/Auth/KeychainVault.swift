@@ -8,7 +8,7 @@ public protocol CredentialVault: Sendable {
     func delete(profileID: UUID) throws
 }
 
-public final class KeychainVault: CredentialVault, @unchecked Sendable {
+public final class KeychainVault: CredentialVault {
     public static let defaultService = "app.codex-account-switcher.credentials.v1"
 
     private let service: String

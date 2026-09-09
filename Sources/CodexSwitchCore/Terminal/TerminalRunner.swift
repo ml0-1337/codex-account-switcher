@@ -331,36 +331,14 @@ public final class TerminalRunner {
     }
 
     private func performSwitch(_ profileID: UUID) -> Int32 {
-        let outputState = ProgressOutputState()
-        let context = TerminalActionContext(
-            cancellation: cancellation,
-            progress: { [weak self, weak outputState] text in
-                guard let self, let outputState else { return }
-                self.emitProgress(text, outputState: outputState)
-            },
-            diagnostic: { [weak self] text in
-                self?.emitDiagnostic(text)
-            }
-        )
-
-        do {
-            try cancellation.check()
-            _ = try actions.switchTo(profileID, context)
-            try cancellation.check()
-            guard outputState.error == nil else {
-                if let error = outputState.error { reportFailure(error) }
-                return 1
-            }
-            // Keep the successful switch result exactly two lines. These are
-            // emitted only after the injected action has returned and the
-            // token is still clear.
-            let success = "認証ファイルを選択したアカウントに切り替えました。\n"
+        performAction { context in
+            _ = try self.actions.switchTo(profileID, context)
+            // The shared action runner checks cancellation and output errors
+            // before emitting this exact two-line success message.
+            return TerminalActionResult(message:
+                "認証ファイルを選択したアカウントに切り替えました。\n"
                 + "ChatGPTアプリを手動で再起動してください。\n"
-            try write(success, to: .standardOutput)
-            try cancellation.check()
-            return 0
-        } catch {
-            return handleActionFailure(error, outputState: outputState)
+            )
         }
     }
 

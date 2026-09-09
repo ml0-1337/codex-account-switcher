@@ -22,7 +22,13 @@ private enum JSONCoding {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .custom { date, encoder in
             var container = encoder.singleValueContainer()
-            try container.encode(Int64((date.timeIntervalSince1970 * 1_000_000).rounded()))
+            guard let microseconds = encodedMicroseconds(for: date) else {
+                throw EncodingError.invalidValue(date, .init(
+                    codingPath: encoder.codingPath,
+                    debugDescription: "Date is outside the supported microsecond range."
+                ))
+            }
+            try container.encode(microseconds)
         }
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         return encoder
@@ -33,9 +39,20 @@ private enum JSONCoding {
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
             let microseconds = try container.decode(Int64.self)
-            return Date(timeIntervalSince1970: Double(microseconds) / 1_000_000)
+            let date = Date(timeIntervalSince1970: Double(microseconds) / 1_000_000)
+            guard encodedMicroseconds(for: date) != nil else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Date cannot be represented in the supported microsecond range."
+                )
+            }
+            return date
         }
         return decoder
+    }
+
+    private static func encodedMicroseconds(for date: Date) -> Int64? {
+        Int64(exactly: (date.timeIntervalSince1970 * 1_000_000).rounded())
     }
 }
 
@@ -43,7 +60,7 @@ private struct SchemaVersionProbe: Decodable {
     let schemaVersion: Int
 }
 
-public final class StateStore: StateStoreProtocol, @unchecked Sendable {
+public final class StateStore: StateStoreProtocol, Sendable {
     private let paths: AppPaths
 
     public init(paths: AppPaths) {
@@ -51,11 +68,13 @@ public final class StateStore: StateStoreProtocol, @unchecked Sendable {
     }
 
     public func loadOrCreate() throws -> SwitcherState {
-        guard FileManager.default.fileExists(atPath: paths.stateFile.path) else {
+        guard let data = try AtomicFileWriter.readSecureFileIfPresent(
+            paths.stateFile,
+            maximumSize: 1_048_576
+        ) else {
             return SwitcherState(sharedCodexHome: paths.codexHome.path)
         }
 
-        let data = try AtomicFileWriter.readSecureFile(paths.stateFile, maximumSize: 1_048_576)
         let decoded: SwitcherState
         do {
             let decoder = JSONCoding.decoder()
@@ -87,7 +106,7 @@ public final class StateStore: StateStoreProtocol, @unchecked Sendable {
     }
 }
 
-public final class JournalStore: SwitchJournalStoreProtocol, @unchecked Sendable {
+public final class JournalStore: SwitchJournalStoreProtocol, Sendable {
     private let paths: AppPaths
 
     public init(paths: AppPaths) {
@@ -95,8 +114,10 @@ public final class JournalStore: SwitchJournalStoreProtocol, @unchecked Sendable
     }
 
     public func load() throws -> SwitchJournal? {
-        guard FileManager.default.fileExists(atPath: paths.journalFile.path) else { return nil }
-        let data = try AtomicFileWriter.readSecureFile(paths.journalFile, maximumSize: 65_536)
+        guard let data = try AtomicFileWriter.readSecureFileIfPresent(
+            paths.journalFile,
+            maximumSize: 65_536
+        ) else { return nil }
         do {
             let decoder = JSONCoding.decoder()
             let version = try decoder.decode(SchemaVersionProbe.self, from: data).schemaVersion
@@ -134,7 +155,7 @@ public final class JournalStore: SwitchJournalStoreProtocol, @unchecked Sendable
     }
 }
 
-public final class RegistrationStore: RegistrationStoreProtocol, @unchecked Sendable {
+public final class RegistrationStore: RegistrationStoreProtocol, Sendable {
     private let paths: AppPaths
 
     public init(paths: AppPaths) {
@@ -142,13 +163,10 @@ public final class RegistrationStore: RegistrationStoreProtocol, @unchecked Send
     }
 
     public func load() throws -> PendingCredentialRegistration? {
-        guard FileManager.default.fileExists(atPath: paths.registrationJournalFile.path) else {
-            return nil
-        }
-        let data = try AtomicFileWriter.readSecureFile(
+        guard let data = try AtomicFileWriter.readSecureFileIfPresent(
             paths.registrationJournalFile,
             maximumSize: 32_768
-        )
+        ) else { return nil }
         do {
             let decoder = JSONCoding.decoder()
             let version = try decoder.decode(SchemaVersionProbe.self, from: data).schemaVersion

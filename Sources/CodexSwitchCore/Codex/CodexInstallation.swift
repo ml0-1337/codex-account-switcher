@@ -164,13 +164,24 @@ public struct CodexInstallation: Sendable, Equatable {
         at url: URL,
         cancellation: CancellationToken?
     ) throws -> CodexSignature {
-        let verification = try runCodesign(arguments: [
-            "--verify", "--deep", "--strict", "--verbose=0", url.path,
-        ], cancellation: cancellation)
+        try inspectSignature(at: url) { arguments in
+            try runCodesign(arguments: arguments, cancellation: cancellation)
+        }
+    }
+
+    static func inspectSignature(
+        at url: URL,
+        runCodesign: ([String]) throws -> NativeCommandResult
+    ) throws -> CodexSignature {
+        // A valid self-signed signature can claim arbitrary certificate
+        // metadata. Require an Apple-issued identity for the official team.
+        let requirement = "=anchor apple generic and certificate leaf[subject.OU] = \"\(officialTeamIdentifier)\""
+        let verification = try runCodesign([
+            "--verify", "--deep", "--strict", "--verbose=0", "-R", requirement, url.path,
+        ])
         guard verification.status == 0 else { throw CodexInstallationError.signatureInvalid }
         let details = try runCodesign(
-            arguments: ["--display", "--verbose=4", url.path],
-            cancellation: cancellation
+            ["--display", "--verbose=4", url.path]
         )
         guard details.status == 0 else { throw CodexInstallationError.signatureInvalid }
         let lines = details.output.split(whereSeparator: \.isNewline).map(String.init)

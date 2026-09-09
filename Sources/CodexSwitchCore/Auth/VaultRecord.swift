@@ -21,9 +21,6 @@ public struct VaultRecord: Codable, Sendable, Equatable {
         guard schemaVersion == Self.currentSchemaVersion else {
             throw CodexSwitchError.keychain("キーチェーン内の認証形式に対応していません。")
         }
-        guard profileID.uuidString.count == 36 else {
-            throw CodexSwitchError.keychain("キーチェーン内のプロファイル識別子が不正です。")
-        }
         let auth = try AuthBlob(validating: authData)
         guard auth.accountID == accountID else {
             throw CodexSwitchError.keychain("キーチェーン内のアカウント情報が一致しません。")
