@@ -25,53 +25,38 @@ PCRE2 対応の `rg` も必要になる。
 ```sh
 ./scripts/check.sh
 ./scripts/build.sh
-./scripts/install.sh
-~/.local/bin/codex-switch help
+./dist/codex-switch help
 ```
 
 `build.sh` は Release 構成の `codex-switch` をビルドし、`dist/codex-switch` に
 置く。出力は同じディレクトリ内で検証してから原子的に置き換え、`codesign --sign -`
 による ad-hoc 署名と署名検証を行う。開発者証明書や notarization は必要ない。
 
-`install.sh` は `dist/codex-switch` を既定で `~/.local/bin/codex-switch` にコピーする。
-既存の実行可能な同名ファイルを見つけた場合は、上書きせずに一意なバックアップへ移して
-から、同じディレクトリで段階的に置き換える。シンボリックリンク、ディレクトリ、
-実行権限のない既存ファイルは、別のユーザー所有ファイルを黙って置き換えないため拒否する。
+以下の CLI 操作例は、コマンド名を `./dist/codex-switch` に読み替えて実行できる。
 
-テストや別の配置先を使う場合は、次のように引数で指定する。
+### 手動で配置する場合
 
-```sh
-./scripts/install.sh \
-  --source /path/to/codex-switch \
-  --destination /tmp/codex-switch-test/bin/codex-switch
-```
-
-`install.sh` は `--source` と `--destination` の代わりに、位置引数
-`source-binary destination-path` も受け付ける。明示的な配置先を使う限り、
-`HOME` は変更されない。インストールに失敗した場合は、すでに退避したファイルを
-元の配置先へ戻し、失敗した新しいファイルは調査できる別の退避先に残す。
-
-プロセスを SIGKILL で終了させた場合だけは後始末ができないため、配置先がないことを
-確認してから、残った `.codex-switch-backup.*` ディレクトリ内の `codex-switch` を元の
-配置先へ手動で `mv` する。バックアップは内容を確認するまで削除・上書きしない。
-
-インストール後にコマンド名だけで実行する場合は、配置先を `PATH` に追加する。
+コマンド名だけで実行したい場合は、ビルドした実行ファイルを個人用の配置先へコピーし、
+そのディレクトリを `PATH` に追加する。次は `~/.local/bin` を使う例である。
+既存の同名ファイルは内容を確認し、必要なら先に退避する。シンボリックリンクや
+パッケージマネージャーが管理するファイルは、この手順で上書きしない。
 
 ```sh
+mkdir -p "$HOME/.local/bin"
+cp -i ./dist/codex-switch "$HOME/.local/bin/codex-switch"
+codesign --verify --strict "$HOME/.local/bin/codex-switch"
 export PATH="$HOME/.local/bin:$PATH"
+codex-switch help
 ```
 
-アンインストールは対象の CLI 実行ファイルだけを確認付きで、復元可能な退避先へ移す。
-認証情報、プロファイル、設定、履歴、Keychain 項目は削除しない。
+手動配置には自動バックアップや失敗時の復元はない。削除するときは、手動配置した
+この CLI であることを確認してから、実行ファイルだけを削除する。
 
 ```sh
-./scripts/uninstall.sh
-# 自動化された明示的な操作に限り、確認を省略する
-./scripts/uninstall.sh --yes
+rm -i "$HOME/.local/bin/codex-switch"
 ```
 
-配置先を限定する場合は `--destination path` を使う。シンボリックリンクや実行権限の
-ないファイルは移動せず、同名の別の実行ファイルを無言で削除しない。
+この削除では、認証情報、プロファイル、設定、履歴、Keychain 項目は残る。
 
 ## CLI の操作
 
@@ -212,14 +197,14 @@ UUID、ラベルは `Codex Account Switcher — email` である。
 ./scripts/check.sh
 ```
 
-配布スクリプトと公開スキャンだけを Swift のビルドなしで確認する場合は、
+公開スキャンと検出器の合成値テストだけを Swift のビルドなしで確認する場合は、
 `./scripts/check-distribution.sh` を直接実行できる。
 
 `check.sh` は Swift のテスト、Release CLI ビルド、すべての配布スクリプトの
 `bash -n` の後、独立して実行できる `scripts/check-distribution.sh` を呼び出す。
 後者は公開対象の秘密情報・個人パス・非テキストファイルのヒューリスティック検査、
-検出器ごとの合成値テスト、隔離した一時ディレクトリでの署名済みバイナリのインストール・
-更新・失敗・退避・アンインストールを実行する。`.git` と、Git 管理下にない `.build`・
+隔離した一時ディレクトリでの検出器ごとの合成値テストを実行する。
+`.git` と、Git 管理下にない `.build`・
 `dist` の生成物は公開対象から除外するが、Git 管理下の同じ場所にあるバイナリは検査で
 拒否する。追跡中かどうかにかかわらず、公開予定の新しいファイルは検査する。検査中に
 ネットワーク、実アカウント、実 Keychain、公式アプリ、通常の `HOME` は使わない。

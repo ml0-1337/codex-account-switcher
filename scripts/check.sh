@@ -10,12 +10,9 @@ swift build \
     --product codex-switch \
     --package-path "$repository_root"
 
-bash -n \
-    "$script_directory/build.sh" \
-    "$script_directory/install.sh" \
-    "$script_directory/check.sh" \
-    "$script_directory/check-distribution.sh" \
-    "$script_directory/uninstall.sh"
+for script_path in "$script_directory"/*.sh; do
+    bash -n "$script_path"
+done
 
 "$script_directory/check-distribution.sh"
 
