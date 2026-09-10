@@ -4,6 +4,10 @@ macOS で Codex のアカウントを切り替える非公式 CLI です。
 認証情報を Mac の Keychain に保存し、ターミナルから切り替え先を選べます。
 設定やローカルの履歴は、共通の `~/.codex` を使い続けます。
 
+![codex-switch でアカウントを選び、切り替える操作例](docs/assets/terminal-demo.svg)
+
+架空のアカウントを使った表示例です。実行中のタスクが完了してから切り替え、成功後はアプリを手動で再起動します。
+
 macOS 14 以降向けに、Apple Silicon・Intel 用の試用版を配布しています。
 確認済みの環境と未確認の項目は [v0.1.0 のリリース説明](https://github.com/ml0-1337/codex-account-switcher/releases/tag/v0.1.0) を参照してください。
 

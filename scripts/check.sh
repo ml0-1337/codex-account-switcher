@@ -14,6 +14,8 @@ for script_path in "$script_directory"/*.sh; do
     bash -n "$script_path"
 done
 
+ruby "$script_directory/render-terminal-demo.rb" | cmp - "$repository_root/docs/assets/terminal-demo.svg"
+
 "$script_directory/check-distribution.sh"
 "$script_directory/check-release.sh"
 

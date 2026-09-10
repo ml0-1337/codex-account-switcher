@@ -96,7 +96,7 @@ scan_source_paths() {
             continue
         fi
         case "$mime_type" in
-            text/*|application/json|application/xml|application/x-sh|application/x-shellscript|inode/x-empty)
+            text/*|application/json|application/xml|image/svg+xml|application/x-sh|application/x-shellscript|inode/x-empty)
                 ;;
             *)
                 echo "publication source contains a binary or non-text file: $(display_source_path "$file_path") ($mime_type)" >&2
@@ -271,6 +271,8 @@ run_source_scan_behavior_tests() {
     local email_fixture="$fixture_directory/personal-email.txt"
     local path_fixture="$fixture_directory/personal-path.txt"
     local binary_fixture="$fixture_directory/binary"
+    local svg_fixture="$fixture_directory/terminal.svg"
+    local private_svg_fixture="$fixture_directory/private.svg"
     local negative_fixture="$fixture_directory/negative.txt"
     local marked_fixture="$fixture_directory/testfixtures/marked-private-key.txt"
     local private_header
@@ -303,6 +305,11 @@ run_source_scan_behavior_tests() {
     expect_scan_status "$path_fixture" 1 "personal-path"
     printf '\000\001\002\003' > "$binary_fixture"
     expect_scan_status "$binary_fixture" 1 "binary"
+
+    printf '<svg xmlns="http://www.w3.org/2000/svg"><text>personal@example.com</text></svg>\n' > "$svg_fixture"
+    expect_scan_status "$svg_fixture" 0 "text-svg"
+    printf '<svg xmlns="http://www.w3.org/2000/svg"><text>%s</text></svg>\n' "$personal_email" > "$private_svg_fixture"
+    expect_scan_status "$private_svg_fixture" 1 "personal-email-in-svg"
 
     printf '%s\n' \
         'team_id = "team-0123456789abcdef"' \
