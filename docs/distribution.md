@@ -11,7 +11,8 @@
 `codex-switch` だけをビルドする。`scripts/build.sh` は Release 構成で
 `swift build --configuration release --product codex-switch` を実行し、既定では
 `dist/codex-switch` を作る。開発者は Swift 6、macOS 14 以降、Git、および
-`scripts/check-distribution.sh` が要求する PCRE2 対応の `rg` を用意する。
+`scripts/check-distribution.sh` が要求する PCRE2 対応の `rg`、配布定義の検査に使う Ruby を用意する。
+プロジェクト名と Swift パッケージ名は `codex-account-switcher`、実行ファイル名は `codex-switch` とする。
 
 ビルドしたファイルは出力先と同じディレクトリに一時配置し、実行権限を確認してから
 `codesign --force --sign -` で ad-hoc 署名する。`codesign --verify --strict` が成功した
@@ -98,7 +99,7 @@ Homebrew 経由の導入を含め、Gatekeeper や Keychain のアクセス制�
 ## CLI の手動配置と削除
 
 ビルドした `dist/codex-switch` はそのまま実行できる。コマンド名だけで使うための
-手動配置と削除の手順は [README](../README.md#手動で配置する場合) にまとめる。
+手動配置と削除の手順は [その他の導入方法](installation.md#手動で配置する) にまとめる。
 
 `scripts` はビルドと検査を担当し、利用者の配置先へのインストールや削除は行わない。
 手動配置には自動バックアップや失敗時の復元はない。削除の対象は手動配置した CLI
