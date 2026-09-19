@@ -130,17 +130,22 @@ public final class TerminalRunner {
 
     private let accountViewProvider: TerminalAccountViewProvider
     private let actions: TerminalActions
+    private let reloadAppServer: (TerminalActionContext) -> AppServerReloadOutcome
 
     public init(
         io: TerminalIO,
         accountView: @escaping TerminalAccountViewProvider,
         actions: TerminalActions,
-        cancellation: CancellationToken = CancellationToken()
+        cancellation: CancellationToken = CancellationToken(),
+        reloadAppServer: (@Sendable (TerminalActionContext) -> AppServerReloadOutcome)? = nil
     ) {
         self.io = io
         self.accountViewProvider = accountView
         self.actions = actions
         self.cancellation = cancellation
+        self.reloadAppServer = reloadAppServer ?? { context in
+            AppServerReloader().reload(cancellation: context.cancellation)
+        }
     }
 
     @discardableResult
@@ -173,6 +178,7 @@ public final class TerminalRunner {
         使い方: codex-switch [setup|add|list|recover|help]
 
         引数なし       登録済みアカウントを選択して認証ファイルを切り替えます。
+                       起動中のアプリバックエンドへ再読み込みを要求します。
         setup          初回セットアップを実行します。
         add            アカウントを追加します。
         list           登録済みアカウントと最後に切替指定したアカウントを表示します。
@@ -333,12 +339,30 @@ public final class TerminalRunner {
     private func performSwitch(_ profileID: UUID) -> Int32 {
         performAction { context in
             _ = try self.actions.switchTo(profileID, context)
-            // The shared action runner checks cancellation and output errors
-            // before emitting this exact two-line success message.
-            return TerminalActionResult(message:
-                "認証ファイルを選択したアカウントに切り替えました。\n"
-                + "ChatGPTアプリを手動で再起動してください。\n"
-            )
+            context.progress("ChatGPTアプリのバックエンドへ再読み込みを要求しています…")
+            let outcome = self.reloadAppServer(context)
+            return TerminalActionResult(message: Self.switchSuccessMessage(for: outcome))
+        }
+    }
+
+    /// The credential switch is already committed at this point; reload
+    /// failures degrade to the previous manual-restart instruction instead
+    /// of failing the command.
+    private static func switchSuccessMessage(for outcome: AppServerReloadOutcome) -> String {
+        let switched = "認証ファイルを選択したアカウントに切り替えました。\n"
+        switch outcome {
+        case .reloaded:
+            return switched
+                + "ChatGPTアプリのバックエンドを再起動しました。新しいアカウントで動作します。\n"
+        case .terminationRequested:
+            return switched
+                + "バックエンドの再起動を要求しました。反映まで数十秒かかることがあります。\n"
+        case .notRunning:
+            return switched
+                + "起動中のバックエンドが見つかりませんでした。次回の起動時に反映されます。\n"
+        case .indeterminate:
+            return switched
+                + "バックエンドを再起動できませんでした。ChatGPTアプリを手動で再起動してください。\n"
         }
     }
 

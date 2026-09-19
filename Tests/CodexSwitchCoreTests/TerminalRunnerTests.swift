@@ -35,7 +35,8 @@ final class TerminalRunnerTests: XCTestCase {
         setup: TerminalAction? = nil,
         add: TerminalAction? = nil,
         switchTo: TerminalSwitchAction? = nil,
-        recover: TerminalAction? = nil
+        recover: TerminalAction? = nil,
+        reloadOutcome: AppServerReloadOutcome = .notRunning
     ) -> (TerminalRunner, RecordingTerminalIO) {
         let io = RecordingTerminalIO(
             input: input,
@@ -58,7 +59,8 @@ final class TerminalRunnerTests: XCTestCase {
             io: io,
             accountView: accountView,
             actions: actions,
-            cancellation: token
+            cancellation: token,
+            reloadAppServer: { _ in reloadOutcome }
         )
         return (runner, io)
     }
@@ -453,6 +455,38 @@ final class TerminalRunnerTests: XCTestCase {
         XCTAssertTrue(io.standardOutput.hasSuffix(Self.switchSuccessText))
     }
 
+    func testSwitchSuccessReportsBackendReload() throws {
+        let accountView = try view()
+        let (runner, io) = makeRunner(
+            input: ["1", "y"],
+            accountView: { accountView },
+            switchTo: { _, _ in .none },
+            reloadOutcome: .reloaded(previousPIDs: [200], currentPIDs: [900])
+        )
+
+        XCTAssertEqual(runner.run(arguments: []), 0)
+        XCTAssertTrue(io.standardOutput.hasSuffix(
+            "認証ファイルを選択したアカウントに切り替えました。\n"
+            + "ChatGPTアプリのバックエンドを再起動しました。新しいアカウントで動作します。\n"
+        ))
+    }
+
+    func testSwitchSuccessFallsBackToManualRestartOnIndeterminateReload() throws {
+        let accountView = try view()
+        let (runner, io) = makeRunner(
+            input: ["1", "y"],
+            accountView: { accountView },
+            switchTo: { _, _ in .none },
+            reloadOutcome: .indeterminate
+        )
+
+        XCTAssertEqual(runner.run(arguments: []), 0)
+        XCTAssertTrue(io.standardOutput.hasSuffix(
+            "認証ファイルを選択したアカウントに切り替えました。\n"
+            + "バックエンドを再起動できませんでした。ChatGPTアプリを手動で再起動してください。\n"
+        ))
+    }
+
     func testCancellationDuringFinalSwitchWritePreservesSignalExitCode() throws {
         let accountView = try view()
         for signal in [SIGINT, SIGTERM] {
@@ -488,7 +522,7 @@ final class TerminalRunnerTests: XCTestCase {
 
     private static let switchSuccessText =
         "認証ファイルを選択したアカウントに切り替えました。\n"
-        + "ChatGPTアプリを手動で再起動してください。\n"
+        + "起動中のバックエンドが見つかりませんでした。次回の起動時に反映されます。\n"
 }
 
 private final class RecordingTerminalIO: TerminalIO {

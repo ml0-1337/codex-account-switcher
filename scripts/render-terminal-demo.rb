@@ -17,7 +17,7 @@ puts <<~SVG
   <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="#{height}" viewBox="0 0 1120 #{height}" role="img" aria-labelledby="title description">
     <!-- Generated from README.md by scripts/render-terminal-demo.rb. -->
     <title id="title">codex-switch の操作例</title>
-    <desc id="description">架空のアカウント personal@example.com から work@example.com を選ぶ表示例。切り替え後はアプリを手動で再起動します。</desc>
+    <desc id="description">架空のアカウント personal@example.com から work@example.com を選ぶ表示例。切り替え後は起動中のバックエンドへ再読み込みを要求します。</desc>
     <defs>
       <linearGradient id="background" x2="1" y2="1">
         <stop stop-color="#243447"/>

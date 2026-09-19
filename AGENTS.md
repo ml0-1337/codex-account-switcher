@@ -3,7 +3,12 @@
 The project and Swift package are named `codex-account-switcher`; the only command-line executable is `codex-switch`. It does not bundle a GUI or OpenAI binaries.
 
 - Keep credential persistence and file switching in `Sources/CodexSwitchCore`; the executable owns terminal interaction only.
-- Never quit, restart, modify, or send account-switch notifications to the official application. Only terminate login children owned by this CLI.
+- Never quit, restart, or send account-switch notifications to the official
+  application itself. After a committed switch the CLI may SIGTERM only the
+  official application's own `app-server` sidecar (matched by bundled binary
+  path plus parent application PID) so it reloads the replaced auth file;
+  never signal other Codex processes. Only terminate login children owned by
+  this CLI otherwise.
 - Normal switching and recovery do not start Codex or use the network. Login uses the signed official application's bundled Codex in a private temporary home for new accounts.
 - Preserve state v2 and Keychain record v1. New switch journals use v3 and registration journals use v2. Refuse legacy pending records instead of interpreting them as new operations.
 - Never put real credentials, account lists, private keys, or machine-specific user paths in this repository or test output.

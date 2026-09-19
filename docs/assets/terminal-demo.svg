@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="456" viewBox="0 0 1120 456" role="img" aria-labelledby="title description">
   <!-- Generated from README.md by scripts/render-terminal-demo.rb. -->
   <title id="title">codex-switch の操作例</title>
-  <desc id="description">架空のアカウント personal@example.com から work@example.com を選ぶ表示例。切り替え後はアプリを手動で再起動します。</desc>
+  <desc id="description">架空のアカウント personal@example.com から work@example.com を選ぶ表示例。切り替え後は起動中のバックエンドへ再読み込みを要求します。</desc>
   <defs>
     <linearGradient id="background" x2="1" y2="1">
       <stop stop-color="#243447"/>
@@ -26,6 +26,6 @@
     <text x="56" y="308">2</text>
     <text x="56" y="340">work@example.com に切り替えますか？ [y/N]: y</text>
     <text x="56" y="372">認証ファイルを選択したアカウントに切り替えました。</text>
-    <text x="56" y="404">ChatGPTアプリを手動で再起動してください。</text>
+    <text x="56" y="404">ChatGPTアプリのバックエンドを再起動しました。新しいアカウントで動作します。</text>
   </g>
 </svg>
